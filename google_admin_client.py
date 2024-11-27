@@ -18,12 +18,13 @@ class GoogleAdminClient:
             "Content-Type": "application/json"
         }
 
-    def fetch_all_users(self, customer="my_customer", projection="full"):
+    def fetch_all_users(self, customer="my_customer", projection="full", show_deleted=False):
         """
         Fetch all users from the Google Admin Directory API.
 
         :param customer: The customer ID or "my_customer" for the account.
         :param projection: The projection level, e.g., "basic" or "full".
+        :param show_deleted: Whether to include deleted users. Default is False.
         :return: List of users.
         """
         url = f"{self.base_url}/users"
@@ -31,6 +32,10 @@ class GoogleAdminClient:
             "customer": customer,
             "projection": projection
         }
+        
+        if show_deleted:
+            params["showDeleted"] = "true"
+
         users = []
 
         response = requests.get(url, headers=self.headers, params=params)
