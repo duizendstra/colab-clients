@@ -5,7 +5,7 @@ import google.auth.iam
 import google.oauth2.service_account
 
 
-class ColabCredentialsManager:
+class ColabClient:
     def __init__(self, service_account_email, project_id, scopes, subject=None):
         """
         Initializes the ColabCredentialsManager.
