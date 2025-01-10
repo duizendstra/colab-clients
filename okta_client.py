@@ -42,7 +42,7 @@ class OktaClient:
 
         logs = []
         retry_attempts = 0
-        last_next_link = None  # Keep track of the last 'next' link to detect duplicates
+        last_next_link = None
 
         while url:
             print(f"Fetching logs from: {url}")
@@ -52,9 +52,8 @@ class OktaClient:
                 if retry_attempts >= max_retries:
                     print("Exceeded maximum retry attempts for rate limit.")
                     break
-
-                retry_after = int(response.headers.get("Retry-After", 1))  # Fallback to 1 second
-                backoff_time = min(2 ** retry_attempts, 60)  # Exponential backoff (capped at 60 seconds)
+                retry_after = int(response.headers.get("Retry-After", 1))
+                backoff_time = min(2 ** retry_attempts, 60)
                 wait_time = max(retry_after, backoff_time)
                 print(f"Rate limit hit. Retrying after {wait_time} seconds...")
                 time.sleep(wait_time)
@@ -67,13 +66,12 @@ class OktaClient:
                 break
 
             data = response.json()
-            if not data:  # Break if no data is returned
+            if not data:
                 print("No more logs available.")
                 break
 
             logs.extend(data)
 
-            # Reset retry attempts on success
             retry_attempts = 0
 
             # Parse the Link header for pagination
@@ -87,16 +85,14 @@ class OktaClient:
                         break
 
             if next_link:
-                if next_link == last_next_link:  # Detect if 'next' link is stuck
+                if next_link == last_next_link:
                     print("Pagination is stuck. Exiting loop.")
                     break
-                last_next_link = next_link  # Update the last 'next' link
+                last_next_link = next_link
                 url = next_link
-                params = None  # Parameters are included in the next link
+                params = None
             else:
-                url = None  # Exit loop when no 'next' link is found
-
-
+                url = None
 
         return logs
 
@@ -135,7 +131,7 @@ class OktaClient:
 
             if next_link:
                 url = next_link
-                params = None  # Parameters are included in the next_link
+                params = None
             else:
                 url = None
 
@@ -179,7 +175,7 @@ class OktaClient:
 
             if next_link:
                 url = next_link
-                params = None  # Parameters are included in the next_link
+                params = None
             else:
                 url = None
 
@@ -221,3 +217,43 @@ class OktaClient:
 
         return workflows
 
+    def fetch_app_users(self, app_id, limit=200):
+        """
+        Fetch all users assigned to a given app by ID, using pagination.
+
+        :param app_id: The Okta app's ID
+        :param limit: Number of users to fetch per page (default: 200)
+        :return: List of assigned users
+        """
+        url = f"{self.base_url}/apps/{app_id}/users"
+        params = {"limit": limit}
+        assigned_users = []
+
+        while url:
+            response = requests.get(url, headers=self.headers, params=params)
+            if response.status_code != 200:
+                print(f"Failed to retrieve assigned users for App ID: {app_id}. Status code: {response.status_code}")
+                print(response.text)
+                break
+
+            data = response.json()
+            assigned_users.extend(data)
+
+            # Parse the Link header for pagination
+            next_link = None
+            links = response.headers.get('Link')
+            if links:
+                link_headers = requests.utils.parse_header_links(links.strip(' <>'))
+                for link in link_headers:
+                    if link.get('rel') == 'next':
+                        next_link = link.get('url')
+                        break
+
+            if next_link:
+                url = next_link
+                # For subsequent pages, params are embedded in the link
+                params = None
+            else:
+                url = None
+
+        return assigned_users
