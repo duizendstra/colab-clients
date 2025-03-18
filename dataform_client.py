@@ -3,6 +3,8 @@ import time
 import logging
 from typing import List, Dict, Optional
 
+logger = logging.getLogger(__name__)
+
 class DataformClient:
     """
     A client for interacting with the Dataform API.  Provides methods for
