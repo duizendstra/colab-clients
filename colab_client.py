@@ -3,19 +3,26 @@ from google.auth import default
 from google.auth.transport.requests import Request
 import google.auth.iam
 import google.oauth2.service_account
-
+import logging
 
 class ColabClient:
-    def __init__(self, service_account_email, project_id, scopes, subject=None):
-        """
-        Initializes the ColabCredentialsManager.
-
-        Args:
+    """
+    Manages interactions with Google APIs in Colab using service account impersonation.
+    
+    Args:
         service_account_email (str): The email of the service account.
         project_id (str): Google Cloud Project ID.
-        scopes (list): A list of scopes to be granted.
-        subject (str, optional): The email of the user to impersonate.
-        """
+        scopes (List[str]): A list of OAuth2 scopes.
+        subject (str, optional): The email of the user to impersonate (for domain-wide delegation).
+    """
+
+    def __init__(
+        self,
+        service_account_email: str,
+        project_id: str,
+        scopes: list[str],
+        subject: str = None
+    ) -> None:
         self.service_account_email = service_account_email
         self.project_id = project_id
         self.scopes = scopes
@@ -23,22 +30,25 @@ class ColabClient:
         self.credentials = None
         self.access_token = None
 
-    def generate_credentials(self, return_token=False):
+    def generate_credentials(self, authenticate_in_colab: bool = True, return_token: bool = False):
         """
-        Generates credentials and an access token for use in Google Colab.
+        Generates credentials for use in Google Colab, optionally returning the access token.
 
         Args:
-        return_token (bool, optional): Whether to return the generated token. Defaults to False.
+            authenticate_in_colab (bool): Whether to call auth.authenticate_user() in Colab.
+            return_token (bool, optional): Return the generated token if True.
 
         Returns:
-        tuple or Credentials: The credentials and the access token (if return_token is True), otherwise just the credentials.
+            Credentials object, or (Credentials, str) if return_token is True.
 
         Raises:
-        Exception: If an error occurs during the operation.
+            Exception: If an error occurs during credential generation.
         """
         try:
             auth_request = Request()
-            auth.authenticate_user()
+            if authenticate_in_colab:
+                auth.authenticate_user()
+
             colab_creds, _ = default(quota_project_id=self.project_id)
 
             signer = google.auth.iam.Signer(
@@ -48,34 +58,45 @@ class ColabClient:
             )
 
             self.credentials = google.oauth2.service_account.Credentials(
-                signer,
-                self.service_account_email,
-                token_uri='https://accounts.google.com/o/oauth2/token',
+                signer=signer,
+                service_account_email=self.service_account_email,
+                token_uri='https://oauth2.googleapis.com/token',
                 scopes=self.scopes,
                 subject=self.subject
             )
 
             self.credentials.refresh(auth_request)
             self.access_token = self.credentials.token
+            logging.info("Credentials generated successfully.")
 
             if return_token:
                 return self.credentials, self.access_token
-            else:
-                return self.credentials
+            return self.credentials
 
         except Exception as e:
+            logging.exception("Error generating Colab credentials.")
             raise Exception(f"An error occurred while generating Colab credentials: {e}")
 
-    def get_access_token(self):
+    def refresh_if_needed(self):
         """
-        Retrieves the access token if it has been generated.
+        Refresh the credentials if they are not valid or nearing expiry.
+        """
+        if self.credentials and not self.credentials.valid:
+            logging.info("Refreshing credentials...")
+            self.credentials.refresh(Request())
+            self.access_token = self.credentials.token
+
+    def get_access_token(self) -> str:
+        """
+        Retrieves the current access token.
 
         Returns:
-        str: The access token.
+            str: The current access token.
 
         Raises:
-        Exception: If credentials have not been generated.
+            Exception: If credentials have not been generated.
         """
-        if not self.access_token:
-            raise Exception("Access token has not been generated. Call generate_credentials() first.")
+        if not self.credentials:
+            raise Exception("Credentials have not been generated. Call generate_credentials() first.")
+        self.refresh_if_needed()
         return self.access_token
